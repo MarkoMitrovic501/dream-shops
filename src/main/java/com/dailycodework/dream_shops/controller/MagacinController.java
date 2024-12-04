@@ -66,7 +66,7 @@ public class MagacinController {
         }
 
         System.out.println("Adding product with ID " + request.getProductId());
-        magacinService.addProductToMagacin(request.getMagacinId(), request.getProductId());
+        magacinService.addProductToMagacin(request.getMagacinId(), request.getProductId(), request.getQuantity());
 
         Magacin updatedMagacin = magacinService.getMagacin(request.getMagacinId());
         return ResponseEntity.ok(new ApiResponse("Add Item Success", updatedMagacin));

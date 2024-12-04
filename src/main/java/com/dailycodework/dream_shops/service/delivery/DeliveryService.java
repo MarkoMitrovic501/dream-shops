@@ -1,25 +1,25 @@
 package com.dailycodework.dream_shops.service.delivery;
 
 import com.dailycodework.dream_shops.dto.DeliveryDto;
-import com.dailycodework.dream_shops.exceptions.InsufficientStockException;
 import com.dailycodework.dream_shops.exceptions.ResourceNotFoundException;
 import com.dailycodework.dream_shops.model.Delivery;
 import com.dailycodework.dream_shops.model.Magacin;
 import com.dailycodework.dream_shops.model.Product;
 import com.dailycodework.dream_shops.model.User;
 import com.dailycodework.dream_shops.repository.DeliveryRepository;
-import com.dailycodework.dream_shops.repository.MagacinRepository;
 import com.dailycodework.dream_shops.repository.ProductRepository;
-import com.dailycodework.dream_shops.repository.UserRepository;
 import com.dailycodework.dream_shops.request.DeliveryUpdateRequest;
 import com.dailycodework.dream_shops.service.magacin.MagacinService;
 import com.dailycodework.dream_shops.service.user.UserService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Transactional
@@ -27,50 +27,13 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DeliveryService implements IDeliveryService {
 
+
+    private static final Logger logger = LoggerFactory.getLogger(DeliveryService.class);
+
     private final DeliveryRepository deliveryRepository;
     private final UserService userService;
     private final MagacinService magacinService;
     private final ProductRepository productRepository;
-    private final UserRepository userRepository;
-    private final MagacinRepository magacinRepository;
-
-    @Transactional
-    @Override
-    public Delivery createDelivery(Long userId, Long magacinId, Long productId, int quantity) {
-        User user = userService.findUserById(userId);
-        if (user == null) {
-            throw new ResourceNotFoundException("User not found for id: " + userId);
-        }
-
-        Magacin magacin = magacinService.findMagacinById(magacinId);
-        if (magacin == null) {
-            throw new ResourceNotFoundException("Magacin not found for id: " + magacinId);
-        }
-
-        Delivery delivery = new Delivery();
-        delivery.setUser(user);
-        delivery.setMagacin(magacin);
-        delivery.setDeliveryDate(LocalDate.now());
-        delivery = deliveryRepository.save(delivery);
-
-        if (productId != null && quantity > 0) {
-            Product product = productRepository.findById(productId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Product not found for id: " + productId));
-
-            if (product.getInventory() < quantity) {
-                throw new InsufficientStockException(
-                        "Insufficient stock for productId: " + productId + ". Available: " + product.getInventory());
-            }
-
-            product.setInventory(product.getInventory() - quantity);
-            productRepository.save(product);
-
-            delivery.addProduct(product, quantity);
-            deliveryRepository.save(delivery); // This should cascade and persist DeliveryItems
-        }
-
-        return delivery;
-    }
 
 
     public Delivery placeDelivery(Long userId) {
@@ -81,7 +44,7 @@ public class DeliveryService implements IDeliveryService {
             throw new ResourceNotFoundException("User not found with id: " + userId);
         }
 
-        System.out.println("User found: " + user.getId());
+        logger.info("User found: {}", user.getId());
 
         Delivery delivery = new Delivery();
         delivery.setUser(user);
@@ -93,56 +56,61 @@ public class DeliveryService implements IDeliveryService {
             throw new ResourceNotFoundException("No Magacin found for user with id: " + userId);
         }
 
-        System.out.println("Magacin found: " + magacin.getName());
+        logger.info("Magacin found: {}", magacin.getName());
 
         delivery.setMagacin(magacin);
 
         return deliveryRepository.save(delivery);
     }
 
-    private void adjustInventory(Product product, int quantityChange) {
-        if (quantityChange != 0) {
-            int newInventory = product.getInventory() + quantityChange;
-            if (newInventory < 0) {
-                throw new InsufficientStockException("Not enough inventory for product id: " + product.getId());
-            }
-            product.setInventory(newInventory);
-            System.out.println("quantityChange");
-            productRepository.save(product);
+    private void adjustInventory(Product product, int quantityDifference) {
+        if (quantityDifference == 0) {
+            logger.debug("No inventory adjustment needed for product: {}", product.getName());
+            return;
         }
+
+        int currentStock = product.getInventory();
+        int updatedStock = currentStock + quantityDifference;
+
+        if (updatedStock < 0) {
+            logger.error("Insufficient stock for product: {}. Current: {}, Required: {}",
+                    product.getName(), currentStock, Math.abs(quantityDifference));
+            throw new EmptyStackException();
+        }
+
+        product.setInventory(updatedStock);
+        productRepository.save(product);
+
+        logger.info("Inventory updated for product: {}. New stock: {}", product.getName(), updatedStock);
     }
 
     @Override
     public void addProductToDelivery(Long deliveryId, Long productId, int quantity) {
+        logger.info("Adding productId: {} to deliveryId: {} with quantity: {}", productId, deliveryId, quantity);
+
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found for id: " + productId));
-        System.out.println("Product found for id: " + productId);
 
-        if (product.getInventory() < quantity) {
-            System.out.println("Insufficient stock for productId: " + productId + ". Available: " + product.getInventory());
-            throw new InsufficientStockException(
-                    "Insufficient stock for productId: " + productId + ". Available: " + product.getInventory());
-        }
-        System.out.println("DeliveryService 1");
         Delivery delivery = deliveryRepository.findById(deliveryId)
                 .orElseThrow(() -> new ResourceNotFoundException("Delivery not found for id: " + deliveryId));
-        System.out.println("DeliveryService 2");
-        delivery.addProduct(product, quantity);
-        deliveryRepository.save(delivery);
-        System.out.println("DeliveryService 3");
 
         Integer currentQuantity = delivery.getQuantity(product);
-        if (currentQuantity == null) {
-            currentQuantity = 0;
-        }
+        currentQuantity = (currentQuantity == null) ? 0 : currentQuantity;
+
         int quantityDifference = quantity - currentQuantity;
 
-        adjustInventory(product, -quantityDifference);
+        try {
+            adjustInventory(product, -quantityDifference); // Adjust stock based on quantity difference
+        } catch (IllegalArgumentException e) {
+            logger.error("Failed to adjust inventory: {}", e.getMessage());
+            throw e; // or handle it appropriately
+        }
 
         delivery.addProduct(product, quantity);
         delivery.updateTotalPrice();
-
         deliveryRepository.save(delivery);
+
+        logger.info("Product added to delivery. Updated quantity: {}, Total price: {}", quantity, delivery.getTotalPrice());
     }
 
     @Override
@@ -167,6 +135,8 @@ public class DeliveryService implements IDeliveryService {
 
     @Override
     public void deleteDelivery(Long deliveryId) {
+        logger.warn("Deleting delivery with id: {}", deliveryId);
+
         Delivery delivery = deliveryRepository.findById(deliveryId)
                 .orElseThrow(() -> new ResourceNotFoundException("Delivery not found for id: " + deliveryId));
 
@@ -175,163 +145,106 @@ public class DeliveryService implements IDeliveryService {
     }
 
     @Transactional
-    @Override
     public Delivery updateDelivery(DeliveryUpdateRequest request, Long deliveryId) {
-        System.out.println("Starting delivery update for deliveryId: " + deliveryId);
+        logger.info("Updating delivery with id: {}", deliveryId);
 
         Delivery delivery = deliveryRepository.findById(deliveryId)
-                .map(existingDelivery -> {
-                    System.out.println("Found existing delivery: " + existingDelivery);
-                    Delivery updatedDelivery = updateExistingDelivery(existingDelivery, request);
-                    System.out.println("Updated delivery details: " + updatedDelivery);
-                    return updatedDelivery;
-                })
-                .orElseThrow(() -> new ResourceNotFoundException("Delivery not found for id: " + deliveryId));
+                .orElseThrow(() -> {
+                    logger.error("Delivery not found for id: {}", deliveryId);
+                    return new ResourceNotFoundException("Delivery not found for id: " + deliveryId);
+                });
 
-        System.out.println("Saving updated delivery: " + delivery);
+        Map<Long, Product> products = productRepository.findAllById(request.getProducts().keySet())
+                .stream().collect(Collectors.toMap(Product::getId, Function.identity()));
+
+        logger.debug("Products fetched for update: {}", products.keySet());
+
+        decreaseInventoryForNewQuantities(request.getProducts(), products);
+
+        Map<Product, Integer> updatedProductQuantities = request.getProducts().entrySet().stream()
+                .collect(Collectors.toMap(entry -> products.get(entry.getKey()), Map.Entry::getValue));
+
+        delivery.setProductQuantities(updatedProductQuantities);
+        delivery.updateTotalPrice();
 
         Delivery savedDelivery = deliveryRepository.save(delivery);
-
-        System.out.println("Saved delivery to the database: " + savedDelivery);
+        logger.info("Updated delivery saved with id: {}, Total Price: {}", savedDelivery.getId(), savedDelivery.getTotalPrice());
 
         return savedDelivery;
     }
 
-    private Delivery updateExistingDelivery(Delivery existingDelivery, DeliveryUpdateRequest request) {
-        // Apply updates from the request to the existing delivery
-        if (request.getUserId() != null) {
-            User user = userRepository.findById(request.getUserId())
-                    .orElseThrow(() -> new ResourceNotFoundException("User not found!"));
-            existingDelivery.setUser(user);
-        }
+    private void decreaseInventoryForNewQuantities(Map<Long, Integer> newQuantities, Map<Long, Product> products) {
+        newQuantities.forEach((productId, newQuantity) -> {
+            Product product = products.get(productId);
 
-        if (request.getMagacinId() != null) {
-            Magacin magacin = magacinRepository.findById(request.getMagacinId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Magacin not found!"));
-            existingDelivery.setMagacin(magacin);
-        }
+            logger.debug("Decreasing inventory for product: {}, Current stock: {}, Decrease by: {}",
+                    product.getName(), product.getInventory(), newQuantity);
 
-        if (request.getDeliveryDate() != null) {
-            existingDelivery.setDeliveryDate(request.getDeliveryDate());
-        }
+            adjustInventory(product, -newQuantity);
 
-        if (request.getStatus() != null) {
-            existingDelivery.setStatus(request.getStatus());
-        }
-
-        // Handle product updates and adjust inventory
-        if (request.getProducts() != null && !request.getProducts().isEmpty()) {
-            Map<Product, Integer> productQuantities = request.getProducts().entrySet().stream()
-                    .map(entry -> {
-                        Product product = productRepository.findById(entry.getKey())
-                                .orElseThrow(() -> new ResourceNotFoundException("Product not found!"));
-                        return Map.entry(product, entry.getValue());
-                    })
-                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-
-            // Adjust inventory for removed products first (decrease inventory)
-            existingDelivery.getProductQuantities().forEach((product, oldQuantity) -> {
-                if (!productQuantities.containsKey(product)) {
-                    // If the product is no longer in the delivery, adjust inventory (increase quantity)
-                    adjustInventory(product, oldQuantity);  // Revert the inventory back
-                } else {
-                    // If the product is still in the delivery, adjust inventory based on the difference
-                    int newQuantity = productQuantities.get(product);
-                    int quantityDifference = oldQuantity - newQuantity;
-                    adjustInventory(product, quantityDifference);  // Decrease inventory for removed quantity
-                }
-            });
-
-            // Add or update products in the delivery (update inventory for added products)
-            productQuantities.forEach((product, newQuantity) -> {
-                Integer currentQuantity = existingDelivery.getQuantity(product);
-                if (currentQuantity == null) {
-                    currentQuantity = 0;  // Default to 0 if null
-                }
-                int quantityDifference = newQuantity - currentQuantity;
-                adjustInventory(product, quantityDifference) ; // Decrease inventory for newly added quantity
-                existingDelivery.addProduct(product, newQuantity);
-            });
-
-            // After updating product quantities, update the total price
-            existingDelivery.updateTotalPrice();
-        }
-
-        return existingDelivery;
+            logger.info("Inventory decreased for product: {}. New stock: {}", product.getName(), product.getInventory());
+        });
     }
 
     @Transactional
     @Override
     public Delivery overwriteUpdate(DeliveryUpdateRequest request, Long deliveryId) {
-        System.out.println("Starting overwrite update for deliveryId: " + deliveryId);
+        logger.info("Starting overwrite update for deliveryId: {}", deliveryId);
 
         Delivery delivery = deliveryRepository.findById(deliveryId)
-                .map(existingDelivery -> {
-                    System.out.println("Found existing delivery: " + existingDelivery);
+                .orElseThrow(() -> {
+                    logger.error("Delivery not found for id: {}", deliveryId);
+                    return new ResourceNotFoundException("Delivery not found for id: " + deliveryId);
+                });
+        Delivery updatedDelivery = overwriteDelivery(delivery, request);
+        Delivery savedDelivery = deliveryRepository.save(updatedDelivery);
 
-                    Delivery updatedDelivery = overwriteDelivery(existingDelivery, request);
-                    System.out.println("Updated delivery details: " + updatedDelivery);
-                    return updatedDelivery;
-                })
-                .orElseThrow(() -> new ResourceNotFoundException("Delivery not found for id: " + deliveryId));
-
-        System.out.println("Saving updated delivery: " + delivery);
-
-        Delivery savedDelivery = deliveryRepository.save(delivery);
-
-        System.out.println("Saved delivery to the database: " + savedDelivery);
+        logger.info("Saved delivery to the database: {}", savedDelivery);
 
         return savedDelivery;
     }
 
     private Delivery overwriteDelivery(Delivery existingDelivery, DeliveryUpdateRequest request) {
-        if (request.getUserId() != null) {
-            User user = userRepository.findById(request.getUserId())
-                    .orElseThrow(() -> new ResourceNotFoundException("User not found!"));
-            existingDelivery.setUser(user);
-        } else {
-            existingDelivery.setUser(null); // Remove user if not provided
+        logger.debug("Overwriting delivery with id: {}", existingDelivery.getId());
+
+        if (existingDelivery.getProductQuantities() != null) {
+            for (Map.Entry<Product, Integer> entry : existingDelivery.getProductQuantities().entrySet()) {
+                Product product = entry.getKey();
+                int quantityInDelivery = entry.getValue();
+                adjustInventory(product, quantityInDelivery);
+                logger.info("Restored inventory for product: {} by quantity: {}", product.getName(), quantityInDelivery);
+            }
         }
+        existingDelivery.setProductQuantities(new HashMap<>());
 
-        if (request.getMagacinId() != null) {
-            Magacin magacin = magacinRepository.findById(request.getMagacinId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Magacin not found!"));
-            existingDelivery.setMagacin(magacin);
-        } else {
-            existingDelivery.setMagacin(null); // Remove magacin if not provided
-        }
-
-        existingDelivery.setDeliveryDate(request.getDeliveryDate());
-
-        // Overwrite product quantities entirely
         if (request.getProducts() != null && !request.getProducts().isEmpty()) {
-            Map<Product, Integer> productQuantities = request.getProducts().entrySet().stream()
+            logger.info("Updating product quantities for delivery id: {}", existingDelivery.getId());
+
+            Map<Product, Integer> newProductQuantities = request.getProducts().entrySet().stream()
                     .map(entry -> {
                         Product product = productRepository.findById(entry.getKey())
-                                .orElseThrow(() -> new ResourceNotFoundException("Product not found!"));
-                        product.setInventory(product.getInventory() + entry.getValue());
-                        productRepository.save(product);
+                                .orElseThrow(() -> {
+                                    logger.error("Product not found with id: {}", entry.getKey());
+                                    return new ResourceNotFoundException("Product not found!");
+                                });
                         return Map.entry(product, entry.getValue());
                     })
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
-            // Clear current products and replace with new ones
-            existingDelivery.getProductQuantities().forEach((product, quantity) -> {
-                adjustInventory(product, quantity);  // Increase inventory for products being removed
-            });
+            existingDelivery.setProductQuantities(newProductQuantities);
 
-            // Add new products to delivery and adjust inventory
-            existingDelivery.setProductQuantities(new HashMap<>(productQuantities));
+            for (Map.Entry<Product, Integer> entry : newProductQuantities.entrySet()) {
+                Product product = entry.getKey();
+                int newQuantity = entry.getValue();
+                adjustInventory(product, -newQuantity);
+                logger.info("Adjusted inventory for product: {} by quantity: {}", product.getName(), -newQuantity);
+            }
+
             existingDelivery.updateTotalPrice();
+            logger.info("Updated total price for delivery id: {} to: {}", existingDelivery.getId(), existingDelivery.getTotalPrice());
         } else {
-            // If no products are provided, clear the existing products
-            existingDelivery.setProductQuantities(new HashMap<>());
-            existingDelivery.getProducts().clear();
-            existingDelivery.setTotalPrice(BigDecimal.ZERO); // Reset total price if no products
-        }
-
-        if (request.getStatus() != null) {
-            existingDelivery.setStatus(request.getStatus());
+            logger.warn("No products found in request. Setting total price to 0 for delivery id: {}", existingDelivery.getId());
+            existingDelivery.setTotalPrice(BigDecimal.ZERO);
         }
 
         return existingDelivery;

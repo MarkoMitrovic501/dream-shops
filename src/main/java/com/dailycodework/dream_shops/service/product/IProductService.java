@@ -37,7 +37,5 @@ public interface IProductService {
 
     ProductDto convertToDto(Product product);
 
-    void addProductToMagacin(Long id, Long productId);
-
     List<Magacin> getAllProductInMagacin();
 }

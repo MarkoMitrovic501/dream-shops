@@ -2,7 +2,6 @@ package com.dailycodework.dream_shops.dto;
 
 import com.dailycodework.dream_shops.model.Role;
 import lombok.Data;
-
 import java.util.List;
 
 @Data

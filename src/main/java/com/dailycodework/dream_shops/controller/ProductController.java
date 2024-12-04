@@ -10,14 +10,13 @@ import com.dailycodework.dream_shops.request.ProductUpdateRequest;
 import com.dailycodework.dream_shops.response.ApiResponse;
 import com.dailycodework.dream_shops.service.magacin.MagacinService;
 import com.dailycodework.dream_shops.service.product.IProductService;
-import com.dailycodework.dream_shops.service.user.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.List;
-
 import static org.springframework.http.HttpStatus.*;
 
 @RequiredArgsConstructor
@@ -25,7 +24,6 @@ import static org.springframework.http.HttpStatus.*;
 @RequestMapping("/api/v1/products")
 public class ProductController {
     private final IProductService productService;
-    private final UserService userService;
     private final MagacinService magacinService;
 
     @GetMapping("/all")
@@ -52,7 +50,7 @@ public class ProductController {
         try {
             Magacin magacin = magacinService.getMagacin(magacinId);
 
-            List<Product> productsInMagacin = (List<Product>) magacin.getItems();
+            List<Product> productsInMagacin = new ArrayList<>(magacin.getItems());
 
             if (productsInMagacin.isEmpty()) {
                 return ResponseEntity.status(NOT_FOUND).body(new ApiResponse("No products found in this magacin", null));

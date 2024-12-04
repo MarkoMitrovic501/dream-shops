@@ -2,7 +2,6 @@ package com.dailycodework.dream_shops.dto;
 
 import com.dailycodework.dream_shops.model.Category;
 import java.math.BigDecimal;
-import java.util.List;
 import lombok.Data;
 
 @Data

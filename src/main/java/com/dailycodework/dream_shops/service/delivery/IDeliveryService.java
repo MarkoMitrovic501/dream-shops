@@ -4,12 +4,9 @@ import com.dailycodework.dream_shops.dto.DeliveryDto;
 import com.dailycodework.dream_shops.model.Delivery;
 import com.dailycodework.dream_shops.request.DeliveryUpdateRequest;
 import jakarta.transaction.Transactional;
-
 import javax.naming.InsufficientResourcesException;
 
 public interface IDeliveryService {
-
-    Delivery createDelivery(Long userId, Long magacinId, Long productId, int quantity);
 
     Delivery placeDelivery(Long userId);
 
@@ -25,7 +22,4 @@ public interface IDeliveryService {
 
     @Transactional
     Delivery overwriteUpdate(DeliveryUpdateRequest request, Long deliveryId);
-
-//    @Transactional
-//    Delivery overwriteUpdate(DeliveryUpdateRequest request, Long deliveryId);
 }

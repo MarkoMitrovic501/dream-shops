@@ -12,7 +12,6 @@ public class DeliveryItem {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Getters and setters
     @Getter
     @Setter
     @ManyToOne

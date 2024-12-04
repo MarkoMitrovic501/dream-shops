@@ -23,7 +23,6 @@ public class Product {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-
     @Column(unique = true, name = "name", nullable = false, length = 100)
     private String name;
 
@@ -55,11 +54,8 @@ public class Product {
     @JsonBackReference
     private Delivery delivery;
 
-
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<DeliveryItem> deliveryItems = new ArrayList<>();
-
-
 
     public Product(String name, String brand, BigDecimal price, int inventory, String description, Category category) {
         this.name = name;

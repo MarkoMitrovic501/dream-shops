@@ -75,5 +75,4 @@ public class ShopConfig {
         http.addFilterBefore(authTokenFilter(), UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
-
 }

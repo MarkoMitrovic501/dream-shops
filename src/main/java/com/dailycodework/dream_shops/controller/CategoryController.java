@@ -59,7 +59,6 @@ public class CategoryController {
         }
     }
 
-
     @DeleteMapping("/category/{id}/delete")
     public ResponseEntity<ApiResponse> deleteCategory(@PathVariable Long id){
         try {

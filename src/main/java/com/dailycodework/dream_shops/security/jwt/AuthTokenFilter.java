@@ -22,7 +22,6 @@ public class AuthTokenFilter extends OncePerRequestFilter {
     private ShopUserDetailsService userDetailsService;
 
     public AuthTokenFilter() {
-        this.jwtUtils = jwtUtils;
     }
 
     @Override

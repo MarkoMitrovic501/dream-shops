@@ -6,4 +6,5 @@ import lombok.Data;
 public class AddProductToMagacinRequest {
     private Long magacinId;
     private Long productId;
+    private int quantity;
 }

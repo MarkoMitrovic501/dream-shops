@@ -37,4 +37,11 @@ public class Magacin {
         this.items.add(magacinItem);
         magacinItem.setMagacin(this);
     }
+
+    public void removeItem(Product product) {
+        if (this.items.contains(product)) {
+            this.items.remove(product);
+            product.setMagacin(null);
+        }
+    }
 }
